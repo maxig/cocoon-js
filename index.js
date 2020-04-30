@@ -30,15 +30,29 @@ var cocoon = (function($) {
     if(typeof insertionNode == 'string'){
       if (insertionTraversal){
         return $this[insertionTraversal](insertionNode);
-      }else{
+      } else {
         return insertionNode == "this" ? $this : $(insertionNode);
       }
     }
+  }
 
+  var createEvent = function(name, details, options ) {
+    var defaultOptions = { bubbles: true, cancelable: true };
+    if (!options) {
+      options = defaultOptions;
+    }
+
+    return new CustomEvent(name, {
+            bubbles: options.bubbles || defaultOptions.bubbles,
+            cancelable: options.cancelable || defaultOptions.cancelable,
+            detail: details,
+          })
   }
 
   $(document).on('click', '.add_fields', function(e) {
     e.preventDefault();
+    e.stopPropagation();
+
     var $this                 = $(this),
         assoc                 = $this.data('association'),
         assocs                = $this.data('associations'),
@@ -51,7 +65,8 @@ var cocoon = (function($) {
         regexp_underscord     = new RegExp('_new_' + assoc + '_(\\w*)', 'g'),
         new_id                = create_new_id(),
         new_content           = content.replace(regexp_braced, newcontent_braced(new_id)),
-        new_contents          = [];
+        new_contents          = [],
+        originalEvent         = e;
 
 
     if (new_content == content) {
@@ -84,16 +99,16 @@ var cocoon = (function($) {
     $.each(new_contents, function(i, node) {
       var contentNode = $(node);
 
-      var before_insert = $.Event('cocoon:before-insert');
-      insertionNodeElem.trigger(before_insert, [contentNode]);
+      var before_insert = createEvent('cocoon:before-insert', { contentNode: contentNode[0], originalEvent: originalEvent.originalEvent });
+      insertionNodeElem[0].dispatchEvent(before_insert);
 
-      if (!before_insert.isDefaultPrevented()) {
+      if (!before_insert.defaultPrevented) {
         // allow any of the jquery dom manipulation methods (after, before, append, prepend, etc)
         // to be called on the node.  allows the insertion node to be the parent of the inserted
         // code and doesn't force it to be a sibling like after/before does. default: 'before'
         var addedContent = insertionNodeElem[insertionMethod](contentNode);
 
-        insertionNodeElem.trigger('cocoon:after-insert', [contentNode]);
+        insertionNodeElem[0].dispatchEvent(createEvent('cocoon:after-insert', { contentNode: contentNode[0], originalEvent: originalEvent.originalEvent }));
       }
     });
   });
@@ -102,24 +117,26 @@ var cocoon = (function($) {
     var $this = $(this),
         wrapper_class = $this.data('wrapper-class') || 'nested-fields',
         node_to_delete = $this.closest('.' + wrapper_class),
-        trigger_node = node_to_delete.parent();
+        trigger_node = node_to_delete.parent(),
+        originalEvent = e;
 
     e.preventDefault();
+    e.stopPropagation();
 
-    var before_remove = $.Event('cocoon:before-remove');
-    trigger_node.trigger(before_remove, [node_to_delete]);
+    var before_remove = createEvent('cocoon:before-remove', { contentNode: node_to_delete[0], originalEvent: originalEvent.originalEvent });
+    trigger_node[0].dispatchEvent(before_remove);
 
-    if (!before_remove.isDefaultPrevented()) {
+    if (!before_remove.defaultPrevented) {
       var timeout = trigger_node.data('remove-timeout') || 0;
 
       setTimeout(function() {
         if ($this.hasClass('dynamic')) {
-            node_to_delete.remove();
+            node_to_delete.detach();
         } else {
             $this.prev("input[type=hidden]").val("1");
             node_to_delete.hide();
         }
-        trigger_node.trigger('cocoon:after-remove', [node_to_delete]);
+        trigger_node[0].dispatchEvent(createEvent('cocoon:after-remove', { contentNode: node_to_delete[0], originalEvent: originalEvent.originalEvent }));
       }, timeout);
     }
   });
